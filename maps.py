@@ -55,7 +55,8 @@ class Maps(object):
         grid = np.loadtxt(self.RLDir+name+'.txt')
         x = np.loadtxt(self.RLDir+folder+'/x.txt')
         y = np.loadtxt(self.RLDir+folder+'/y.txt')
-
+        
+       
         if flipy:                                           # y axis inverted for bedmachine bed
             extent[2], extent[3] = extent[3], extent[2]
         # find arguments of map extent
@@ -216,7 +217,7 @@ class Maps(object):
         m_lons, m_lats, not_used, melting, sigma_melting = np.transpose(self.m_array[resi_sd<self.reliability][:,0:5])
         stagnant, inv_depth, basal, diff = np.transpose(self.stag_array[resi_sd<self.reliability][:,3:7])
         accu_lons, accu_lats, accu_dist, accu, accu_sigma = np.transpose(self.accu_array[resi_sd<self.reliability][:,:5])
-        max_lons, max_lats, max_dist,max_depth, max_age = np.transpose(self.res_max[resi_sd<self.reliability])
+        max_lons, max_lats, max_dist,max_depth, max_age = np.transpose(self.res_max[resi_sd<self.reliability][:, :5])
 
         if not self.saved:
             stagnant[stagnant<0] = 0
@@ -366,7 +367,7 @@ class Maps(object):
                 no_stag = self.cart_map1.scatter(self.lons[stagnant<=0], self.lats[stagnant<=0], c='r', marker='o', lw=0., s=self.dotsize, label = "No stagnant ice", transform=ccrs.PlateCarree())
                 self.scatter = self.cart_map1.scatter(self.lons[stagnant>0], self.lats[stagnant>0], c=stagnant[stagnant>0], norm=norm,  marker='o', lw=0., s=self.dotsize,transform=ccrs.PlateCarree())
                 lgnd = plt.legend(loc='lower left')
-                lgnd.legendHandles[0]._sizes = [15]
+                lgnd.legend_handles[0]._sizes = [15]
                 self.cb_label = 'Stagnant ice (m)'
 
             elif MapLabel=='elevation-non-stagnant-ice':
@@ -410,7 +411,7 @@ class Maps(object):
                 self.scatter = self.cart_map1.scatter(m_lons[melting>0], m_lats[melting>0], c=melting[melting>0]*1e3, marker='o', lw=0., norm=Normalize(vmin=0.0,vmax=3.0),s=self.dotsize,cmap = 'Reds', transform=ccrs.PlateCarree())
                 no_melt = self.cart_map1.scatter(m_lons[melting<=0], m_lats[melting<=0], c='blue', marker='o', lw=0., s=self.dotsize, label = "No melting", transform=ccrs.PlateCarree())
                 lgnd = plt.legend(loc='lower left')
-                lgnd.legendHandles[0]._sizes = [15]
+                lgnd.legend_handles[0]._sizes = [15]
 
                 self.cb_label = '$\overline{m}$ (mm yr$^{-1}$)'
 
@@ -419,7 +420,7 @@ class Maps(object):
                 self.scatter = self.cart_map1.scatter(m_lons[melting>0], m_lats[melting>0], c=sigma_melting[melting>0]*1e3, marker='o', lw=0., s=self.dotsize,transform=ccrs.PlateCarree())
                 no_melt = self.cart_map1.scatter(m_lons[melting<=0], m_lats[melting<=0], c='r', marker='o', lw=0., s=self.dotsize, label = "No melting", transform=ccrs.PlateCarree())
                 lgnd = plt.legend(loc='lower left')
-                lgnd.legendHandles[0]._sizes = [15]
+                lgnd.legend_handles[0]._sizes = [15]
                 self.cb_label = '$\sigma$ Melting (mm yr$^{-1}$)'
 
             elif MapLabel=='melting-stagnant':
@@ -457,7 +458,8 @@ class Maps(object):
 
                 norm = Normalize()
                 i=int(MapLabel[10:12])
-                accu=self.accu_array[:,i+4]
+                accu=self.accu_array[resi_sd < self.reliability][:,i+4]
+                #accu=self.accu_array[:,i+4]
 
                 self.scatter = self.cart_map1.scatter(accu_lons, accu_lats, c=accu, marker='o', lw=0., norm = norm,  s=self.dotsize,transform=ccrs.PlateCarree())
                 self.cb_label='$\overline{a}$ (mm-we a$^{-1}$)'
@@ -491,7 +493,7 @@ if my_map.run_model:
     for i,RLlabel in enumerate(my_map.list_RL):
         directory=my_map.RLDir+RLlabel
         sys.argv=['age_model.py', directory]
-        exec(open('age_model.py').read())
+        exec(open('/Users/yevajeaumot/Documents/IsoInv1D/IsoInv1D/age_model.py').read())
         plt.close("all")
 my_map.next()
 my_map.make_maps()
