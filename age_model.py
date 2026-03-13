@@ -5,6 +5,7 @@ This is the age_model.py module, to invert isochronal layers along a radar profi
 import numpy as np
 import math as m
 import matplotlib.pyplot as plt
+import pandas as pd
 import os
 import sys
 import yaml
@@ -82,9 +83,7 @@ class RadarLine(object):
     def load_parameters(self):
 
         # parameters for all radar lines (file is mandatory - will overwrite default params)
-        #data = yaml.load(open(self.label+'../parameters_all_radar_lines.yml').read(),
-                         #Loader=yaml.FullLoader)
-        data = yaml.load(open(self.label+'parameters_all_radar_lines.yml').read(),
+        data = yaml.load(open(self.label+'../parameters_all_radar_lines.yml').read(),
                          Loader=yaml.FullLoader)
         if data != None:
             self.__dict__.update(data)
@@ -99,41 +98,23 @@ class RadarLine(object):
     # load data from .txt or .dat file and make class varibles
     def load_radar_data(self):
 
-        #Reading the radar horizon dataset
-        nbcolumns = 6+self.nbiso+self.is_bedelev+self.is_trace+self.is_basal
         filename = self.label+self.obs_iso_file
-        if os.path.isfile(filename):
-            readarray = np.loadtxt(filename, usecols=range(nbcolumns),
-                                   skiprows=1)
+        if os.path.isfile(filename): 
+            df = pd.read_csv(filename, sep=None, comment='#', engine='python')
+        
         else:
             print('Isochrone data file not found')
             sys.exit()
-
-        # basic parameters from radar data file
-        if readarray[0, 4] > readarray[-1, 4]:
-            readarray = readarray[::-1, :]
-        self.LON_raw = readarray[:, 0]
-        self.LAT_raw = readarray[:, 1]
-        self.x_raw = readarray[:, 2]
-        self.y_raw = readarray[:, 3]
-        self.distance_raw = readarray[:, 4]
+        
+        self.LON_raw = df['lon'].to_numpy(dtype=float)
+        self.LAT_raw = df['lat'].to_numpy(dtype=float)
+        self.x_raw = df['x'].to_numpy(dtype=float)
+        self.y_raw = df['y'].to_numpy(dtype=float)
+        self.distance_raw = df['distance_(m)'].to_numpy(dtype=float)
         if self.distance_unit == 'm':
             self.distance_raw = self.distance_raw/1000.
-        self.thk_raw = readarray[:, 5]
-
-        # parameters for analysis
-        index = 6
-        if self.is_bedelev:
-            self.bedelev = readarray[:, index]
-            index = index+1
-        if self.is_trace:
-            self.trace = readarray[:, index]
-            index = index+1
-        if self.is_basal:
-            self.basal_raw = readarray[:, index]
-            index = index+1
-        self.iso_raw = np.transpose(readarray[:, index:index+self.nbiso])
-        index = index+self.nbiso
+        self.thk_raw = df['bed'].to_numpy(dtype=float)
+        self.iso_raw = df[self.list_name_iso].to_numpy(dtype=float).T
 
         # set start and end points where there are at least 2 non nan isochrones
         non_nans = np.array([np.count_nonzero(~np.isnan((self.iso_raw[:,i]).flatten())) for i in range(len(self.distance_raw))])
@@ -216,6 +197,11 @@ class RadarLine(object):
     # Reading the AICC2023 dataset, calculation of steady age and interpolation
     def load_temp_factor(self):
       
+        #filename = self.label+self.temp_factor_file
+        #df = pd.read_csv(filename, sep=None, comment='#', engine='python')
+        #self.age_R = df['age'].to_numpy(dtype=float)
+        #self.R = df['R'].to_numpy(dtype=float)
+      
         self.age_R, self.R = np.loadtxt(self.label+self.temp_factor_file, unpack=True)
         self.age_R = np.append(self.age_R, self.age_R[-1]+1)
         self.age_R = np.append(self.age_R, 10000000)
@@ -229,20 +215,20 @@ class RadarLine(object):
         
         
     def load_rel_dens(self):
-        self.D_depth, self.D_D = np.loadtxt(self.label+self.re_dens_file, unpack=True)
+        filename = self.label+self.re_dens_file
+        df = pd.read_csv(filename, sep=None, comment='#', engine='python')
+        self.D_depth = df['depth'].to_numpy(dtype=float)
+        self.D_D = df['relative density'].to_numpy(dtype=float)
+      
         self.D_depth_ie = np.cumsum(np.concatenate(([0], np.diff(self.D_depth) * self.D_D[:-1])))
         
       
     def load_iso_ages(self):
        # Reading ages of isochrones and their sigmas
-        if os.path.isfile(self.label+self.obs_iso_file):                # general age file
-            readarray = np.loadtxt(self.label+self.obs_iso_file)
-        # if os.path.isfile(self.label+'ages.txt'):                   # specific to individual radar line
-        #     readarray = np.loadtxt(self.label+'ages.txt')
-        self.iso_obs_age = np.transpose([readarray[:, 0]])
-        self.iso_obs_age = self.iso_obs_age[0:self.nbiso]
-        self.iso_obs_sigma = np.transpose([readarray[:, 1]])
-        self.iso_obs_sigma = self.iso_obs_sigma[0:self.nbiso]
+        filename = self.label+self.iso_ages_file
+        df = pd.read_csv(filename, sep=None, comment='#', engine = 'python')
+        self.iso_obs_age = df[['age']].to_numpy(dtype=float)[:self.nbiso]
+        self.iso_obs_sigma = df[['sigma_age']].to_numpy(dtype=float)[:self.nbiso]
 
        # interpolated observed isochrone steady ages and sigmas
             
@@ -1099,52 +1085,43 @@ class RadarLine(object):
         for name in self.ic:
             
             if self.distance.min() <= self.ic[name]['x'] <= self.distance.max():
-        
                 idx_core = np.argmin(np.abs(self.distance - self.ic[name]['x']))
             
                 depth_model = self.depth[:, idx_core]
                 age_model = self.age[:, idx_core]
                 tau_model = self.tau[:, idx_core]
                 sigma_model = self.sigma_age[:, idx_core]
-            
                 bedrock_depth = self.ic[name]['max_depth']
-            
                 fig = plt.figure(f'Age-Depth-{name}')
-                
                 plt.plot(age_model/1000., depth_model, color='b', linewidth=2, label='Model')
             
                 obs_file = self.ic[name].get('obs')
             
                 if obs_file is not None:
-            
-                    z_obs, age_obs = np.loadtxt(obs_file, skiprows=1, delimiter='\t', usecols=(0,1),
-                        unpack=True)
-            
+                    
+                    df= pd.read_csv(obs_file, sep=None, comment='#', engine='python')
+                    z_obs= df['depth'].to_numpy(dtype=float)
+                    age_obs = df['age'].to_numpy(dtype=float)
+                    
                     plt.plot(age_obs/1000., z_obs, '--k', linewidth=2, label=f'{name} obs.')
             
                 if hasattr(self, 'iso_obs_age'):
-            
                     depths_at_core = self.iso[:, idx_core]
                     mask = ~np.isnan(depths_at_core)
-            
                     plt.plot(self.iso_obs_age[mask]/1000., depths_at_core[mask],
                              'ro', markersize=4,
                              label='Obs Isochrones')
             
                 plt.axhline(y=bedrock_depth, color='grey', linestyle='-', alpha=0.5, label='Bedrock')
-            
                 plt.xlabel('Age (ka)')
                 plt.ylabel('Depth (m)')
                 plt.legend(loc='upper right')
                 plt.grid(True, linestyle=':', alpha=0.6)
-            
                 plt.axis((0,1500,bedrock_depth+100,0))
             
                 pdf_name = f"{self.label}AgeDepth_{name}.pdf"
-            
                 with PdfPages(pdf_name) as pp:
                     pp.savefig(fig)
-            
                 plt.close(fig)
             
                 header_text = (f"# Total ice thickness (m): {bedrock_depth}\n"
@@ -1152,9 +1129,7 @@ class RadarLine(object):
                                f"# Ice core location (km): {self.ic[name]['x']}\n")
             
                 output = np.column_stack((depth_model, age_model, sigma_model, tau_model))
-            
                 txt_name = f"{self.label}AgeDepth_{name}.txt"
-            
                 np.savetxt(txt_name,
                            output,
                            delimiter="\t",
@@ -1414,10 +1389,6 @@ class RadarLine(object):
         self.parameters_display()
 
         # save data for drills
-        #if self.is_EDC: self.drill('EDC', self.distance_EDC)
-        #if self.is_BELDC: self.drill('BELDC', self.distance_BELDC)
-        #if self.is_core: self.drill(self.name_core, self.distance_core)
-        
         for name in self.ic:
             xcore = self.ic[name]['x']
             if self.distance.min() <= xcore <= self.distance.max():
