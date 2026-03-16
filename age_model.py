@@ -106,15 +106,37 @@ class RadarLine(object):
             print('Isochrone data file not found')
             sys.exit()
         
-        self.LON_raw = df['lon'].to_numpy(dtype=float)
-        self.LAT_raw = df['lat'].to_numpy(dtype=float)
-        self.x_raw = df['x'].to_numpy(dtype=float)
-        self.y_raw = df['y'].to_numpy(dtype=float)
-        self.distance_raw = df['distance_(m)'].to_numpy(dtype=float)
+        self.LON_raw = df['lon'].to_numpy(dtype=float) if 'lon' in df.columns else None
+        self.LAT_raw = df['lat'].to_numpy(dtype=float) if 'lat' in df.columns else None
+        self.x_raw = df['x'].to_numpy(dtype=float) if 'x' in df.columns else None
+        self.y_raw = df['y'].to_numpy(dtype=float) if 'y' in df.columns else None
+        #self.distance_raw = df['distance_(m)'].to_numpy(dtype=float)
+        self.distance_raw = df[[c for c in df.columns if c.lower().startswith('distance')][0]].to_numpy(dtype=float)
         if self.distance_unit == 'm':
             self.distance_raw = self.distance_raw/1000.
         self.thk_raw = df['bed'].to_numpy(dtype=float)
+
         self.iso_raw = df[self.list_name_iso].to_numpy(dtype=float).T
+        if self.is_basal:
+            self.basal_raw = df['A_basal_unit'].to_numpy(dtype=float)
+        if self.is_bedelev: 
+            self.bedelev = df['bedelev'].to_numpy(dtype=float)
+        if self.is_trace: 
+            self.trace = df['trace'].to_numpy(dtype=float)
+
+        # parameters for analysis
+        #index = 6
+        #if self.is_bedelev:
+            #self.bedelev = readarray[:, index]
+            #index = index+1
+        #if self.is_trace:
+            #self.trace = readarray[:, index]
+            #index = index+1
+        #if self.is_basal:
+            #self.basal_raw = readarray[:, index]
+            #index = index+1
+        #self.iso_raw = np.transpose(readarray[:, index:index+self.nbiso])
+        #index = index+self.nbiso
 
         # set start and end points where there are at least 2 non nan isochrones
         non_nans = np.array([np.count_nonzero(~np.isnan((self.iso_raw[:,i]).flatten())) for i in range(len(self.distance_raw))])
@@ -182,27 +204,33 @@ class RadarLine(object):
             self.iso[i, :] = f(np.concatenate((self.distance-self.resolution/2,
                                                np.array([self.distance[-1]+self.resolution/2]))))
         # get coords of distance nodes
-        self.LON = np.interp(self.distance,self.distance_raw, self.LON_raw)
-        self.LAT = np.interp(self.distance,self.distance_raw, self.LAT_raw)
+        if self.LON_raw is not None and self.LAT_raw is not None:
+            self.LON = np.interp(self.distance,self.distance_raw, self.LON_raw)
+            self.LAT = np.interp(self.distance,self.distance_raw, self.LAT_raw)
 
-        # INCOMPLETE: for use when isochrones are given in twtt
-        self.LON_twtt = np.empty_like(self.distance)
-        self.LAT_twtt = np.empty_like(self.distance)
-        for j in range(np.size(self.distance)):
-            self.LON_twtt[j] = self.LON_raw[np.argmin(np.absolute(self.LON_raw-self.LON[j]) +\
+            # INCOMPLETE: for use when isochrones are given in twtt
+            self.LON_twtt = np.empty_like(self.distance)
+            self.LAT_twtt = np.empty_like(self.distance)
+            for j in range(np.size(self.distance)):
+                self.LON_twtt[j] = self.LON_raw[np.argmin(np.absolute(self.LON_raw-self.LON[j]) +\
                                np.absolute(self.LAT_raw-self.LAT[j]))]
-            self.LAT_twtt[j] = self.LAT_raw[np.argmin(np.absolute(self.LON_raw-self.LON[j]) +\
+                self.LAT_twtt[j] = self.LAT_raw[np.argmin(np.absolute(self.LON_raw-self.LON[j]) +\
                                np.absolute(self.LAT_raw-self.LAT[j]))]
+        else:
+            self.LON = None
+            self.LAT = None
+            self.LON_twtt = None
+            self.LAT_twtt = None
 
     # Reading the AICC2023 dataset, calculation of steady age and interpolation
     def load_temp_factor(self):
       
-        #filename = self.label+self.temp_factor_file
-        #df = pd.read_csv(filename, sep=None, comment='#', engine='python')
-        #self.age_R = df['age'].to_numpy(dtype=float)
-        #self.R = df['R'].to_numpy(dtype=float)
+        filename = self.label+self.temp_factor_file
+        df = pd.read_csv(filename, sep='\s+', comment='#', names = ['age', 'R'], engine='python', header=None)
+        self.age_R = df['age'].to_numpy(dtype=float)
+        self.R = df['R'].to_numpy(dtype=float)
       
-        self.age_R, self.R = np.loadtxt(self.label+self.temp_factor_file, unpack=True)
+        #self.age_R, self.R = np.loadtxt(self.label+self.temp_factor_file, unpack=True)
         self.age_R = np.append(self.age_R, self.age_R[-1]+1)
         self.age_R = np.append(self.age_R, 10000000)
         self.R = np.append(self.R, 1)
@@ -673,8 +701,13 @@ class RadarLine(object):
 
     # save data for maps
     def bot_age_save(self):
-
-        output = np.vstack((self.LON, self.LAT, self.distance, self.thk, self.agebot,
+        if self.LON is not None and self.LAT is not None:
+            base_data = (self.LON, self.LAT, self.distance)
+            header = '#LON\tLAT\tdistance(km)'
+        else:
+            base_data = (self.distance,) 
+            header = '#distance(km)'
+        output = np.vstack(base_data + (self.thk, self.agebot,
                             self.agebotmin, self.agebotmax, self.age100m, self.age150m, self.age200m,
                             self.age250m, self.age_density1Myr, self.age_density1dot2Myr,
                             self.age_density1dot5Myr, self.height0dot6Myr, self.height0dot8Myr,
@@ -682,7 +715,7 @@ class RadarLine(object):
                             self.agebot10kyrm, self.agebot15kyrm, self.thkreal))
 
         with open(self.label+'agebottom.txt', 'w') as f:
-            f.write('#LON\tLAT\tdistance(km)\tinverted_thickness(m)\tbottom_age(yr-b1950)'
+            f.write(header + 'inverted_thickness(m)\tbottom_age(yr-b1950)'
                     '\tage-min(yr-b1950)\tage-max(yr-b1950)'
                     '\tage100m\tage150m\tage200m\tage250\tage_density1Myr\tage_density1.2Myr\t'
                     'age_density1.5Myr\theight0.6Myr\theight0.8Myr\theight1Myr\theight1.2Myr\t'
@@ -691,12 +724,34 @@ class RadarLine(object):
                     '\n')
 
             np.savetxt(f, np.transpose(output), delimiter="\t")
+        
+        #output = np.vstack((self.LON, self.LAT, self.distance, self.thk, self.agebot,
+                            #self.agebotmin, self.agebotmax, self.age100m, self.age150m, self.age200m,
+                            #self.age250m, self.age_density1Myr, self.age_density1dot2Myr,
+                            #self.age_density1dot5Myr, self.height0dot6Myr, self.height0dot8Myr,
+                            #self.height1Myr, self.height1dot2Myr, self.height1dot5Myr,
+                            #self.agebot10kyrm, self.agebot15kyrm, self.thkreal))
+
+        #with open(self.label+'agebottom.txt', 'w') as f:
+            #f.write('#LON\tLAT\tdistance(km)\tinverted_thickness(m)\tbottom_age(yr-b1950)'
+                    #'\tage-min(yr-b1950)\tage-max(yr-b1950)'
+                    #'\tage100m\tage150m\tage200m\tage250\tage_density1Myr\tage_density1.2Myr\t'
+                    #'age_density1.5Myr\theight0.6Myr\theight0.8Myr\theight1Myr\theight1.2Myr\t'
+                    #'height1.5Myr'
+                    #'\tage-10kyrm\tage-15kyrm\treal_thickness'
+                    #'\n')
+
+            #np.savetxt(f, np.transpose(output), delimiter="\t")
 
     # save isochrone ages
     def iso_age_save(self):
-        output = np.vstack((self.LON, self.LAT, self.distance, self.iso_modage,
-                            self.iso_modage_sigma))
-        header = '#LON\tLAT\tdistance(km)'
+        if self.LON is not None and self.LAT is not None:
+            base_data = (self.LON, self.LAT, self.distance)
+            header = '#LON\tLAT\tdistance(km)'
+        else:
+            base_data = (self.distance,) 
+            header = '#distance(km)'
+        output = np.vstack(base_data + (self.iso_modage, self.iso_modage_sigma))
         for i in range(self.nbiso):
             header = header+'\tiso_no_'+str(i+1)
         for i in range(self.nbiso):
@@ -708,12 +763,33 @@ class RadarLine(object):
         for i in range(self.nbiso):
             print('isochrone no:', i+1, ', average age: ', np.nanmean(self.iso_modage[i, :]),
                   ', stdev age: ', np.nanstd(self.iso_modage[i, :]))
+        
+        #output = np.vstack((self.LON, self.LAT, self.distance, self.iso_modage,
+                            #self.iso_modage_sigma))
+        #header = '#LON\tLAT\tdistance(km)'
+        #for i in range(self.nbiso):
+            #header = header+'\tiso_no_'+str(i+1)
+        #for i in range(self.nbiso):
+            #header = header+'\tsigma_iso_no_'+str(i+1)
+        #header = header+'\n'
+        #with open(self.label+'ageisochrones.txt', 'w') as f:
+            #f.write(header)
+            #np.savetxt(f, np.transpose(output), delimiter="\t")
+        #for i in range(self.nbiso):
+            #print('isochrone no:', i+1, ', average age: ', np.nanmean(self.iso_modage[i, :]),
+                  #', stdev age: ', np.nanstd(self.iso_modage[i, :]))
 
     # save accumulation parameters
     def parameters_save(self):
-        output = np.vstack((self.LON, self.LAT, self.distance, self.a, self.sigma_a,
-                            self.accu_layer))
-        header = '#LON\tLAT\tdistance(km)\taccu(ice-m/yr)\tsigma_accu'
+        if self.LON is not None and self.LAT is not None:
+            base_data = (self.LON, self.LAT, self.distance)
+            header_base = '#LON\tLAT\tdistance(km)'
+        else:
+            base_data = (self.distance,)
+            header_base = '#distance(km)'
+        
+        output = np.vstack(base_data + (self.a, self.sigma_a, self.accu_layer))
+        header = header_base + '\taccu(ice-m/yr)\tsigma_accu'
         header = header + '\tlayer ' + str(int(self.age_surf/1000.)) + '-' +\
                  str(int(self.iso_obs_age[0][0]/1000.)) + 'kyr'
         for i in range(self.nbiso-1):
@@ -723,38 +799,86 @@ class RadarLine(object):
         with open(self.label+'a.txt', 'w') as f:
             f.write(header)
             np.savetxt(f, np.transpose(output), delimiter="\t")
-        output = np.vstack((self.LON, self.LAT, self.distance, self.m, self.sigma_m))
+        
+        output = np.vstack(base_data + (self.m, self.sigma_m))
         with open(self.label+'m.txt', 'w') as f:
-            f.write('#LON\tLAT\tdistance(km)\tmelting(ice-m/yr)\tsigma_melting\n')
-            np.savetxt(f, np.transpose(output), delimiter="\t")
-        output = np.vstack((self.LON, self.LAT, self.distance, self.p, self.sigma_p))
-        with open(self.label+'p.txt', 'w') as f:
-            f.write('#LON\tLAT\tdistance(km)\tp\tsigma_p\n')
-            np.savetxt(f, np.transpose(output), delimiter="\t")
-        output = np.vstack((self.LON, self.LAT, self.distance, self.p_prime))
-        with open(self.label+'p_prime.txt', 'w') as f:
-            f.write('#LON\tLAT\tdistance(km)\tp\tp_prime\n')
+            f.write(header_base + 'melting(ice-m/yr)\tsigma_melting\n')
             np.savetxt(f, np.transpose(output), delimiter="\t")
             
-        output = np.vstack((self.LON, self.LAT, self.distance, self.Delta, self.sigma_Delta))
+        output = np.vstack(base_data +(self.p, self.sigma_p))
+        with open(self.label+'p.txt', 'w') as f:
+            f.write(header_base + 'p\tsigma_p\n')
+            np.savetxt(f, np.transpose(output), delimiter="\t")
+            
+        output = np.vstack(base_data + (self.p_prime))
+        with open(self.label+'p_prime.txt', 'w') as f:
+            f.write(header_base + 'tp\tp_prime\n')
+            np.savetxt(f, np.transpose(output), delimiter="\t")
+            
+        output = np.vstack(base_data + (self.Delta, self.sigma_Delta))
         with open(self.label+'Delta.txt', 'w') as f:
-            f.write('#LON\tLAT\tdistance(km)\tDelta\tsigma_Delta\n')
+            f.write(header_base + 'Delta\tsigma_Delta\n')
             np.savetxt(f, np.transpose(output), delimiter="\t")
         
-        output = np.vstack((self.LON, self.LAT, self.distance, self.resi_sd, self.bic, self.niso))
+        output = np.vstack(base_data + (self.resi_sd, self.bic, self.niso))
         with open(self.label+'resi_sd.txt', 'w') as f:
-            f.write('#LON\tLAT\tdistance(km)\tresi_sd\tBIC\tN_iso\n')
+            f.write(header_base + 'resi_sd\tBIC\tN_iso\n')
             np.savetxt(f, np.transpose(output), delimiter="\t")
         diff = self.thk-self.basal
-        output = np.vstack((self.LON, self.LAT, self.distance, self.stagnant, self.thk,  self.basal, diff))
+        output = np.vstack(base_data + (self.stagnant, self.thk,  self.basal, diff))
         with open(self.label+'stagnant.txt', 'w') as f:
-            f.write('#LON\tLAT\tdistance(km)\tstagnant_ice (m)\tinverted_thickness (m)\tbasal_unit (m)\tdifference (m)\n')
+            f.write(header_base + 'stagnant_ice (m)\tinverted_thickness (m)\tbasal_unit (m)\tdifference (m)\n')
             np.savetxt(f, np.transpose(output), delimiter="\t")
-        output = np.vstack((self.LON, self.LAT, self.distance, self.depth_max,  self.agebot, self.sigmabotage))
+        output = np.vstack(base_data + (self.depth_max,  self.agebot, self.sigmabotage))
         with open(self.label+'res_max.txt', 'w') as f:
-            f.write('#LON\tLAT\tdistance(km)\tdepth (m)\tage (yrs)\tage sigma(kyr)\n')
+            f.write(header_base + 'depth (m)\tage (yrs)\tage sigma(kyr)\n')
             np.savetxt(f, np.transpose(output), delimiter="\t")
-        output = np.vstack((self.LON, self.LAT, self.distance, self.m, self.stagnant, self.agebot, self.age_density1dot2Myr, self.a, self.p, self.resi_sd))
+        output = np.vstack(base_data + (self.m, self.stagnant, self.agebot, self.age_density1dot2Myr, self.a, self.p, self.resi_sd))
+
+        #output = np.vstack((self.LON, self.LAT, self.distance, self.a, self.sigma_a,
+        #                    self.accu_layer))
+        #header = '#LON\tLAT\tdistance(km)\taccu(ice-m/yr)\tsigma_accu'
+        #header = header + '\tlayer ' + str(int(self.age_surf/1000.)) + '-' +\
+        #         str(int(self.iso_obs_age[0][0]/1000.)) + 'kyr'
+        #for i in range(self.nbiso-1):
+        #   header = header + '\tlayer ' + str(int(self.iso_obs_age[i][0]/1000.)) + '-' +\
+        #             str(int(self.iso_obs_age[i+1][0]/1000.)) + 'kyr'
+        #header = header + '\n'
+        #with open(self.label+'a.txt', 'w') as f:
+        #    f.write(header)
+        #    np.savetxt(f, np.transpose(output), delimiter="\t")
+        #output = np.vstack((self.LON, self.LAT, self.distance, self.m, self.sigma_m))
+        #with open(self.label+'m.txt', 'w') as f:
+        #    f.write('#LON\tLAT\tdistance(km)\tmelting(ice-m/yr)\tsigma_melting\n')
+        #    np.savetxt(f, np.transpose(output), delimiter="\t")
+        #output = np.vstack((self.LON, self.LAT, self.distance, self.p, self.sigma_p))
+        #with open(self.label+'p.txt', 'w') as f:
+        #    f.write('#LON\tLAT\tdistance(km)\tp\tsigma_p\n')
+        #    np.savetxt(f, np.transpose(output), delimiter="\t")
+        #output = np.vstack((self.LON, self.LAT, self.distance, self.p_prime))
+        #with open(self.label+'p_prime.txt', 'w') as f:
+        #    f.write('#LON\tLAT\tdistance(km)\tp\tp_prime\n')
+        #    np.savetxt(f, np.transpose(output), delimiter="\t")
+            
+        #output = np.vstack((self.LON, self.LAT, self.distance, self.Delta, self.sigma_Delta))
+        #with open(self.label+'Delta.txt', 'w') as f:
+        #    f.write('#LON\tLAT\tdistance(km)\tDelta\tsigma_Delta\n')
+        #    np.savetxt(f, np.transpose(output), delimiter="\t")
+        
+        #output = np.vstack((self.LON, self.LAT, self.distance, self.resi_sd, self.bic, self.niso))
+        #with open(self.label+'resi_sd.txt', 'w') as f:
+        #    f.write('#LON\tLAT\tdistance(km)\tresi_sd\tBIC\tN_iso\n')
+        #    np.savetxt(f, np.transpose(output), delimiter="\t")
+        #diff = self.thk-self.basal
+        #output = np.vstack((self.LON, self.LAT, self.distance, self.stagnant, self.thk,  self.basal, diff))
+        #with open(self.label+'stagnant.txt', 'w') as f:
+        #    f.write('#LON\tLAT\tdistance(km)\tstagnant_ice (m)\tinverted_thickness (m)\tbasal_unit (m)\tdifference (m)\n')
+        #    np.savetxt(f, np.transpose(output), delimiter="\t")
+        #output = np.vstack((self.LON, self.LAT, self.distance, self.depth_max,  self.agebot, self.sigmabotage))
+        #with open(self.label+'res_max.txt', 'w') as f:
+        #    f.write('#LON\tLAT\tdistance(km)\tdepth (m)\tage (yrs)\tage sigma(kyr)\n')
+        #    np.savetxt(f, np.transpose(output), delimiter="\t")
+        #output = np.vstack((self.LON, self.LAT, self.distance, self.m, self.stagnant, self.agebot, self.age_density1dot2Myr, self.a, self.p, self.resi_sd))
 
         # matrices which can be optionally saved in order to replot model results
         np.savetxt(self.label+'sigma_thickness.txt', self.sigma_thk, delimiter='\t')
