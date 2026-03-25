@@ -119,8 +119,11 @@ class Maps(object):
 
         #Reading isochrones' ages
         if self.place != 'Ridge B':
-            readarray=np.loadtxt(self.RLDir+'ages.txt')
-            iso_age=np.concatenate((np.array([0]),readarray[:,0]))
+            #readarray=np.loadtxt(self.RLDir+'ages.txt')
+            #iso_age=np.concatenate((np.array([0]),readarray[:,0]))
+            filename = self.RLDir+'ages.txt'
+            df= pd.read_csv(filename, sep = None, comment='#', engine='python')
+            iso_age=np.concatenate(([0], df['age'].to_numpy(dtype=float)))
 
         for i in range(nbiso):
             self.list_maps.append('Accu-layer'+ "%02i"%(i+1) +'_'+str(int(iso_age[i]/1000.))+'-'+str(int(iso_age[i+1]/1000.))+'kyr' )

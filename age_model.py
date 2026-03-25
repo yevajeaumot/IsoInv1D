@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 import sys
+import warnings
 import yaml
 from scipy.optimize import least_squares
 
@@ -94,7 +95,10 @@ class RadarLine(object):
             data = yaml.load(open(filename).read(), Loader=yaml.FullLoader)
             if data != None:
                 self.__dict__.update(data)
-
+                
+        if hasattr(self, 'list_name_iso') and self.list_name_iso is not None:
+             self.nbiso = len(self.list_name_iso)
+                
     # load data from .txt or .dat file and make class varibles
     def load_radar_data(self):
 
@@ -114,29 +118,35 @@ class RadarLine(object):
         self.distance_raw = df[[c for c in df.columns if c.lower().startswith('distance')][0]].to_numpy(dtype=float)
         if self.distance_unit == 'm':
             self.distance_raw = self.distance_raw/1000.
-        self.thk_raw = df['bed'].to_numpy(dtype=float)
+        if self.bed_name is not None : 
+            self.thk_raw = df[self.bed_name].to_numpy(dtype=float)
+        else : 
+            self.thk_raw = df['bed'].to_numpy(dtype=float)
 
-        self.iso_raw = df[self.list_name_iso].to_numpy(dtype=float).T
+        if self.list_name_iso is not None : 
+            self.iso_raw = df[self.list_name_iso].to_numpy(dtype=float).T
+        else: 
+            self.layer_name = []
+            index = 1  
+            while True:
+                name_iso = f"{self.pattern_name_iso}{index}"
+                if name_iso in df.columns:
+                   self.layer_name.append(name_iso)
+                   index = index+1
+                else:
+                    break
+            if self.layer_name:
+                self.iso_raw = df[self.layer_name].to_numpy(dtype=float).T
+                print(f" {len(self.layer_name)} loaded columns (from {self.layer_name[0]} to {self.layer_name[-1]})")
+            else:
+                self.iso_raw = np.array([])
+            self.nbiso = len(self.layer_name)    
         if self.is_basal:
             self.basal_raw = df['A_basal_unit'].to_numpy(dtype=float)
         if self.is_bedelev: 
             self.bedelev = df['bedelev'].to_numpy(dtype=float)
         if self.is_trace: 
             self.trace = df['trace'].to_numpy(dtype=float)
-
-        # parameters for analysis
-        #index = 6
-        #if self.is_bedelev:
-            #self.bedelev = readarray[:, index]
-            #index = index+1
-        #if self.is_trace:
-            #self.trace = readarray[:, index]
-            #index = index+1
-        #if self.is_basal:
-            #self.basal_raw = readarray[:, index]
-            #index = index+1
-        #self.iso_raw = np.transpose(readarray[:, index:index+self.nbiso])
-        #index = index+self.nbiso
 
         # set start and end points where there are at least 2 non nan isochrones
         non_nans = np.array([np.count_nonzero(~np.isnan((self.iso_raw[:,i]).flatten())) for i in range(len(self.distance_raw))])
@@ -192,6 +202,8 @@ class RadarLine(object):
         self.iso_modage = np.empty_like(self.iso)
         self.iso_modage_sigma = np.empty_like(self.iso)
         self.iso_EDC = np.zeros(self.nbiso)
+        
+        self.iso_mod = np.full((self.nbiso, np.size(self.distance)), np.nan)
 
         # interp basal unit if present
         if self.is_basal:
@@ -226,7 +238,7 @@ class RadarLine(object):
     def load_temp_factor(self):
       
         filename = self.label+self.temp_factor_file
-        df = pd.read_csv(filename, sep='\s+', comment='#', names = ['age', 'R'], engine='python', header=None)
+        df = pd.read_csv(filename, sep=r'\s+', comment='#', engine='python', header=0)
         self.age_R = df['age'].to_numpy(dtype=float)
         self.R = df['R'].to_numpy(dtype=float)
       
@@ -247,6 +259,8 @@ class RadarLine(object):
         df = pd.read_csv(filename, sep=None, comment='#', engine='python')
         self.D_depth = df['depth'].to_numpy(dtype=float)
         self.D_D = df['relative density'].to_numpy(dtype=float)
+        self.D_depth = np.append(self.D_depth, self.D_depth[-1]+5000.)
+        self.D_D = np.append(self.D_D, 1.)
       
         self.D_depth_ie = np.cumsum(np.concatenate(([0], np.diff(self.D_depth) * self.D_D[:-1])))
         
@@ -255,6 +269,7 @@ class RadarLine(object):
        # Reading ages of isochrones and their sigmas
         filename = self.label+self.iso_ages_file
         df = pd.read_csv(filename, sep=None, comment='#', engine = 'python')
+        
         self.iso_obs_age = df[['age']].to_numpy(dtype=float)[:self.nbiso]
         self.iso_obs_sigma = df[['sigma_age']].to_numpy(dtype=float)[:self.nbiso]
 
@@ -265,8 +280,7 @@ class RadarLine(object):
         self.iso_obs_steadyage_sigma = np.sqrt((np.interp(self.iso_obs_age+self.iso_obs_sigma, self.age_R, self.steady_age_R) - self.iso_obs_steadyage)*\
                             (self.iso_obs_steadyage - np.interp(self.iso_obs_age-self.iso_obs_sigma, self.age_R, self.steady_age_R)))
             
-        
-
+         
     # arrays to store parameters
     def init_arrays(self):
 
@@ -407,11 +421,12 @@ class RadarLine(object):
         self.mu[j] = self.m[j] / self.a[j]
         self.tau[:, j] = (1 - self.mu[j]) * self.omega[:, j] + self.mu[j] 
         
-        tau_safe = np.where(self.tau[:, j] > 1e-7, self.tau[:, j], 1e-7)
+        # tau_safe = np.where(self.tau[:, j] > 1e-7, self.tau[:, j], 1e-7)
+        tau_inv = np.where(self.tau[:, j] > 0., 1/self.tau[:, j], np.inf)
         
         # new non linear tau
-        self.age_density[:-1, j] = 1 / self.a[j] * (1 / tau_safe[1:-1] + 1 / tau_safe[:-2]) / 2
-        self.age_density[-1, j] = self.age_density[-2, j]
+        self.age_density[:, j] = 1 / self.a[j] * (tau_inv[1:] + tau_inv[:-1]) / 2
+        # self.age_density[-1, j] = self.age_density[-2, j]
 
         # cumulative sum over all zeta, age steady = age density* depth
         self.agesteady[:, j] = np.cumsum(np.concatenate((np.array([self.age_surf]),\
@@ -425,7 +440,7 @@ class RadarLine(object):
        # get args of depth nodes closest to and smaller than isochrone depths
         closest_i = self.find_nearest(self.depth[:, j],self.iso[:, j])
        # interpolate 1/tau for isochrone depths
-        tau_inv_interp = np.interp(self.iso[:, j], self.depth[:, j], 1/tau_safe)
+        tau_inv_interp = np.interp(self.iso[:, j], self.depth[:, j], tau_inv)
         
         
        # calc steady using 1/tau linear interpolation
@@ -525,13 +540,29 @@ class RadarLine(object):
             self.twtt1dot5Myr[j] = -98765.0
         #TODO: make a function to convert to twtt, and make an array for the different isochrones.
         self.twttBed[j] = (self.thk[j]-self.firn_correction)*100/84.248+250.
+        
+        # max_age = np.nanmax(self.age[:, j])
+        # for i, age in enumerate(self.iso_obs_age.flatten()):
+        #     if max_age >= age:
+       
+        #         self.iso_mod[i, j] = np.interp(age, self.age[:, j], self.depth[:, j])
+        #     else:
+        #         self.iso_mod[i, j] = np.nan
+                
+        max_age = np.nanmax(self.age[:, j])
+        for i in range(self.nbiso):
+            if not np.isnan(self.iso_obs_age[i, 0]) and max_age >= self.iso_obs_age[i, 0]:
+                self.iso_mod[i, j] = np.interp(self.iso_obs_age[i, 0], self.age[:, j], self.depth[:, j])
+            else:
+                self.iso_mod[i, j] = np.nan
+    
 
     # Residuals function
     def residuals1D(self, variables1D, j):
 
         var = variables1D+0.0
         # seperate variables to appropriate array
-        self.a[j] = var[0]
+        self.a[j] = m.exp(var[0])
         var = np.delete(var, [0])
         self.p_prime[j] = var[0]
         var = np.delete(var, [0])
@@ -724,25 +755,7 @@ class RadarLine(object):
                     '\n')
 
             np.savetxt(f, np.transpose(output), delimiter="\t")
-        
-        #output = np.vstack((self.LON, self.LAT, self.distance, self.thk, self.agebot,
-                            #self.agebotmin, self.agebotmax, self.age100m, self.age150m, self.age200m,
-                            #self.age250m, self.age_density1Myr, self.age_density1dot2Myr,
-                            #self.age_density1dot5Myr, self.height0dot6Myr, self.height0dot8Myr,
-                            #self.height1Myr, self.height1dot2Myr, self.height1dot5Myr,
-                            #self.agebot10kyrm, self.agebot15kyrm, self.thkreal))
-
-        #with open(self.label+'agebottom.txt', 'w') as f:
-            #f.write('#LON\tLAT\tdistance(km)\tinverted_thickness(m)\tbottom_age(yr-b1950)'
-                    #'\tage-min(yr-b1950)\tage-max(yr-b1950)'
-                    #'\tage100m\tage150m\tage200m\tage250\tage_density1Myr\tage_density1.2Myr\t'
-                    #'age_density1.5Myr\theight0.6Myr\theight0.8Myr\theight1Myr\theight1.2Myr\t'
-                    #'height1.5Myr'
-                    #'\tage-10kyrm\tage-15kyrm\treal_thickness'
-                    #'\n')
-
-            #np.savetxt(f, np.transpose(output), delimiter="\t")
-
+    
     # save isochrone ages
     def iso_age_save(self):
         if self.LON is not None and self.LAT is not None:
@@ -763,22 +776,7 @@ class RadarLine(object):
         for i in range(self.nbiso):
             print('isochrone no:', i+1, ', average age: ', np.nanmean(self.iso_modage[i, :]),
                   ', stdev age: ', np.nanstd(self.iso_modage[i, :]))
-        
-        #output = np.vstack((self.LON, self.LAT, self.distance, self.iso_modage,
-                            #self.iso_modage_sigma))
-        #header = '#LON\tLAT\tdistance(km)'
-        #for i in range(self.nbiso):
-            #header = header+'\tiso_no_'+str(i+1)
-        #for i in range(self.nbiso):
-            #header = header+'\tsigma_iso_no_'+str(i+1)
-        #header = header+'\n'
-        #with open(self.label+'ageisochrones.txt', 'w') as f:
-            #f.write(header)
-            #np.savetxt(f, np.transpose(output), delimiter="\t")
-        #for i in range(self.nbiso):
-            #print('isochrone no:', i+1, ', average age: ', np.nanmean(self.iso_modage[i, :]),
-                  #', stdev age: ', np.nanstd(self.iso_modage[i, :]))
-
+      
     # save accumulation parameters
     def parameters_save(self):
         if self.LON is not None and self.LAT is not None:
@@ -835,51 +833,6 @@ class RadarLine(object):
             np.savetxt(f, np.transpose(output), delimiter="\t")
         output = np.vstack(base_data + (self.m, self.stagnant, self.agebot, self.age_density1dot2Myr, self.a, self.p, self.resi_sd))
 
-        #output = np.vstack((self.LON, self.LAT, self.distance, self.a, self.sigma_a,
-        #                    self.accu_layer))
-        #header = '#LON\tLAT\tdistance(km)\taccu(ice-m/yr)\tsigma_accu'
-        #header = header + '\tlayer ' + str(int(self.age_surf/1000.)) + '-' +\
-        #         str(int(self.iso_obs_age[0][0]/1000.)) + 'kyr'
-        #for i in range(self.nbiso-1):
-        #   header = header + '\tlayer ' + str(int(self.iso_obs_age[i][0]/1000.)) + '-' +\
-        #             str(int(self.iso_obs_age[i+1][0]/1000.)) + 'kyr'
-        #header = header + '\n'
-        #with open(self.label+'a.txt', 'w') as f:
-        #    f.write(header)
-        #    np.savetxt(f, np.transpose(output), delimiter="\t")
-        #output = np.vstack((self.LON, self.LAT, self.distance, self.m, self.sigma_m))
-        #with open(self.label+'m.txt', 'w') as f:
-        #    f.write('#LON\tLAT\tdistance(km)\tmelting(ice-m/yr)\tsigma_melting\n')
-        #    np.savetxt(f, np.transpose(output), delimiter="\t")
-        #output = np.vstack((self.LON, self.LAT, self.distance, self.p, self.sigma_p))
-        #with open(self.label+'p.txt', 'w') as f:
-        #    f.write('#LON\tLAT\tdistance(km)\tp\tsigma_p\n')
-        #    np.savetxt(f, np.transpose(output), delimiter="\t")
-        #output = np.vstack((self.LON, self.LAT, self.distance, self.p_prime))
-        #with open(self.label+'p_prime.txt', 'w') as f:
-        #    f.write('#LON\tLAT\tdistance(km)\tp\tp_prime\n')
-        #    np.savetxt(f, np.transpose(output), delimiter="\t")
-            
-        #output = np.vstack((self.LON, self.LAT, self.distance, self.Delta, self.sigma_Delta))
-        #with open(self.label+'Delta.txt', 'w') as f:
-        #    f.write('#LON\tLAT\tdistance(km)\tDelta\tsigma_Delta\n')
-        #    np.savetxt(f, np.transpose(output), delimiter="\t")
-        
-        #output = np.vstack((self.LON, self.LAT, self.distance, self.resi_sd, self.bic, self.niso))
-        #with open(self.label+'resi_sd.txt', 'w') as f:
-        #    f.write('#LON\tLAT\tdistance(km)\tresi_sd\tBIC\tN_iso\n')
-        #    np.savetxt(f, np.transpose(output), delimiter="\t")
-        #diff = self.thk-self.basal
-        #output = np.vstack((self.LON, self.LAT, self.distance, self.stagnant, self.thk,  self.basal, diff))
-        #with open(self.label+'stagnant.txt', 'w') as f:
-        #    f.write('#LON\tLAT\tdistance(km)\tstagnant_ice (m)\tinverted_thickness (m)\tbasal_unit (m)\tdifference (m)\n')
-        #    np.savetxt(f, np.transpose(output), delimiter="\t")
-        #output = np.vstack((self.LON, self.LAT, self.distance, self.depth_max,  self.agebot, self.sigmabotage))
-        #with open(self.label+'res_max.txt', 'w') as f:
-        #    f.write('#LON\tLAT\tdistance(km)\tdepth (m)\tage (yrs)\tage sigma(kyr)\n')
-        #    np.savetxt(f, np.transpose(output), delimiter="\t")
-        #output = np.vstack((self.LON, self.LAT, self.distance, self.m, self.stagnant, self.agebot, self.age_density1dot2Myr, self.a, self.p, self.resi_sd))
-
         # matrices which can be optionally saved in order to replot model results
         np.savetxt(self.label+'sigma_thickness.txt', self.sigma_thk, delimiter='\t')
         np.savetxt(self.label+'agesteady.txt', self.agesteady/1000., delimiter='\t')
@@ -895,8 +848,6 @@ class RadarLine(object):
 
                 self.ic[name]['XX'] = self.ic[name]['x'] * np.ones(2)
                 self.ic[name]['ZZ'] = np.array([0, self.ic[name]['max_depth']])
-                
-        
     
         # calculate stagnant ice thickness
         self.stagnant = self.thkreal[:] - self.thk[:]
@@ -911,20 +862,20 @@ class RadarLine(object):
                          label='obs. isochrones')
             else:
                 plt.plot(self.distance, self.iso[i, :], color='w', linewidth=1)
-        # levels for age colour gradient
+        #levels for age colour gradient
         levels = np.arange(0, self.max_age, self.max_age/10)
         levels_color = np.arange(0, self.max_age, self.max_age/100)
         plt.contourf(self.dist, self.depth, self.agesteady/1000., levels_color, cmap='jet')
-        # plot bedrock, stagnant ice, basal unit
+        #plot bedrock, stagnant ice, basal unit
         plt.fill_between(self.distance, self.thkreal, self.thk,
             where=self.thk<self.thkreal, color='0.7', label='stagnant ice')
         plt.fill_between(self.distance, self.thkreal, self.thk,
             where=self.thk>self.thkreal, color='white', label='bedrock')
         plt.plot(self.distance, inverted_depth, color='darkviolet',
-            label='inverted depth', linewidth=1)
+            label='inverted depth', linewidth=0.5)
         if self.is_basal:
             plt.plot(self.distance, self.basal, color='black',
-                label='Basal layer', linewidth=1)
+                label='Basal layer', linewidth=0.5)
         # show EDC
        
         for name in self.ic :
@@ -970,7 +921,7 @@ class RadarLine(object):
 
         # model
         fig, plotmodel = plt.subplots()
-        plt.plot(self.distance, self.thkreal, color='k', linewidth=2, label='bed')
+        plt.plot(self.distance, self.thkreal, color='k', linewidth=1, label='bed')
         for i in range(self.nbiso):
             if i == 0:
                 plt.plot(self.distance, self.iso[i, :], color='w', linewidth=1,
@@ -1013,6 +964,7 @@ class RadarLine(object):
         cb.set_ticks(levels)
         cb.set_ticklabels(np.asarray(levels, dtype = 'int'))
         cb.set_label('Modelled age (kyr)')
+        cb.ax.hlines(self.iso_obs_age.flatten()/1000 , 0, 1, color='black', linewidth=1, zorder=10)
         x1, x2, y1, y2 = plt.axis()
         # show reliability index
         if not self.invert_thk:
@@ -1026,7 +978,11 @@ class RadarLine(object):
         if self.max_depth == 'auto':
             self.max_depth = y2
         plt.axis((min(self.distance), max(self.distance), self.max_depth, 0))
-
+        
+        #modelled isochrones 
+        for i in range(self.nbiso):
+            plt.plot(self.distance, self.iso_mod[i, :], color='k', linewidth=1)
+            
         if self.reverse_distance:
             plt.gca().invert_xaxis()
         if self.settick == 'manual':
@@ -1037,6 +993,8 @@ class RadarLine(object):
         plt.close(fig)
         # self.dist = np.max(self.dist) - self.dist
         # self.distance = np.max(self.distance) - self.distance
+        
+       
 
         # AgeMisfit
         fig, plotmodel = plt.subplots()
@@ -1098,7 +1056,9 @@ class RadarLine(object):
                 plt.plot(self.distance, self.iso[i, :], color='w')
         levels_log = np.arange(2, 6, 0.1)
         levels = np.power(10, levels_log)
-        plt.contourf(self.dist[1:-1,:], self.depth[1:-1,:], self.sigma_age[1:-1,:], levels, norm=LogNorm())
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            plt.contourf(self.dist[:,:], self.depth[:,:], self.sigma_age[:,:], levels, norm=LogNorm())
         cb = plt.colorbar()
         cb.set_label('Modeled age confidence interval (yr)')
         levels_labels = np.array([])
@@ -1204,7 +1164,6 @@ class RadarLine(object):
         print('model displayed')
         
         #age depth profiles at ice cores locations 
-        # age depth profiles at ice cores locations
 
         for name in self.ic:
             
@@ -1425,15 +1384,13 @@ class RadarLine(object):
                 
                 print('index along the radar line: ', j)
                 bounds = [-np.inf, -np.inf], [np.inf, np.inf]
-                
-                
+               
                 if np.isnan(self.thkreal[j]) or self.thkreal[j] <= 0:
                     self.a[j],self.p_prime[j], self.Delta[j] = np.nan, np.nan, np.nan
                     continue
                 
-                
-               
-                self.variables1D = np.array([self.a[j], self.p_prime[j]])
+                #self.variables1D = np.array([self.a[j], self.p_prime[j]])
+                self.variables1D = np.array([m.log(self.a[j]), self.p_prime[j]])
                 if self.invert_thk:
                     epsilon = 1e-6
                    
@@ -1459,22 +1416,42 @@ class RadarLine(object):
                 # do least square fit to get variables and hessian matrix
                 leastsq_fit1D = least_squares(self.residuals1D, self.variables1D, bounds=bounds, args=(j,), method='trf')
                 self.variables1D = leastsq_fit1D.x
-
+            
                 self.hess1D = np.linalg.inv(np.dot(np.transpose(leastsq_fit1D.jac), leastsq_fit1D.jac))
-
+                
                 print(self.variables1D)
-                # calc residuals and save results
+                #calc residuals and save results
                 resi=self.residuals1D(self.variables1D, j)
                 self.resi_sd[j] = m.sqrt(np.mean(self.age_resi**2))
                 self.niso[j] = np.sum(~np.isnan(self.iso[:,j]))
                 self.bic[j] = -2 * np.log(self.niso[j]*self.resi_sd[j]) + len(self.variables1D) * np.log(self.niso[j])
-                
               
                 self.model1D_finish(j)
                 if not self.calc_sigma:
                     self.hess1D = np.zeros((np.size(self.variables1D), np.size(self.variables1D)))
                 if np.size(self.hess1D) != 1:
                     self.sigma1D(j)
+                    
+                # try:
+                #     leastsq_fit1D = least_squares(self.residuals1D, self.variables1D, bounds=bounds, args=(j,), method='trf')
+                #     self.variables1D = leastsq_fit1D.x
+                #     self.hess1D = np.linalg.inv(np.dot(np.transpose(leastsq_fit1D.jac), leastsq_fit1D.jac))
+                #     print(self.variables1D)
+                #     # calc residuals and save results
+                #     resi=self.residuals1D(self.variables1D, j)
+                #     self.resi_sd[j] = m.sqrt(np.mean(self.age_resi**2))
+                #     self.niso[j] = np.sum(~np.isnan(self.iso[:,j]))
+                #     self.bic[j] = -2 * np.log(self.niso[j]*self.resi_sd[j]) + len(self.variables1D) * np.log(self.niso[j])
+
+                #     self.model1D_finish(j)
+                #     if not self.calc_sigma:
+                #         self.hess1D = np.zeros((np.size(self.variables1D), np.size(self.variables1D)))
+                #     if np.size(self.hess1D) != 1:
+                #         self.sigma1D(j)
+                # except:
+                #     print('OPTIMIZATION FAILED!')
+                #     continue
+                    
 
             self.agebotmin = self.agebot-self.sigmabotage
             self.agebotmax = self.agebot+self.sigmabotage
