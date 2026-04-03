@@ -872,11 +872,11 @@ class RadarLine(object):
         plt.fill_between(self.distance, self.thkreal, self.thk,
             where=self.thk>self.thkreal, color='white', label='bedrock')
         plt.plot(self.distance, inverted_depth, color='darkviolet',
-            label='inverted depth', linewidth=0.5)
+            label='inverted depth', linewidth=1)
         if self.is_basal:
             plt.plot(self.distance, self.basal, color='black',
-                label='Basal layer', linewidth=0.5)
-        # show EDC
+                label='Basal layer', linewidth=1)
+        # show ice cores 
        
         for name in self.ic :
              if self.distance.min() <= self.ic[name]['x'] <= self.distance.max() : 
@@ -913,10 +913,13 @@ class RadarLine(object):
 
         if self.reverse_distance:
             plt.gca().invert_xaxis()
-        pp = PdfPages(self.label+'Model-steady.pdf')
-        pp.savefig(fig, bbox_inches='tight')
-        # plt.show()
-        pp.close()
+        # pp = PdfPages(self.label+'Model-steady.pdf')
+        # pp.savefig(fig, bbox_inches='tight')
+        # # plt.show()
+        # pp.close()
+        plt.savefig(self.label+'Model-steady.'+self.fig_format,
+                    format=self.fig_format, bbox_inches='tight')
+
         plt.close(fig)
 
         # model
@@ -937,10 +940,10 @@ class RadarLine(object):
         plt.fill_between(self.distance, self.thkreal, self.thk,
             where=self.thk>self.thkreal, color='white', label='bedrock',interpolate=True)
         plt.plot(self.distance, inverted_depth, color='darkviolet',
-            label='inverted depth', linewidth=1)
+            label='inverted depth', linewidth=0.5)
         if self.is_basal:
             plt.plot(self.distance, self.basal, color='black',
-                label='Basal layer', linewidth=1)
+                label='Basal layer', linewidth=0.5)
 
         for name in self.ic :
              if self.distance.min() <= self.ic[name]['x'] <= self.distance.max() : 
@@ -981,15 +984,18 @@ class RadarLine(object):
         
         #modelled isochrones 
         for i in range(self.nbiso):
-            plt.plot(self.distance, self.iso_mod[i, :], color='k', linewidth=1)
+            plt.plot(self.distance, self.iso_mod[i, :], color='k', linewidth=0.5)
             
         if self.reverse_distance:
             plt.gca().invert_xaxis()
         if self.settick == 'manual':
             plotmodel.set_xticks(np.arange(self.min_tick, self.max_tick+1., self.delta_tick))
-        pp = PdfPages(self.label+'Model.pdf')
-        pp.savefig(fig, bbox_inches='tight')
-        pp.close()
+        # pp = PdfPages(self.label+'Model.pdf')
+        # pp.savefig(fig, bbox_inches='tight')
+        # pp.close()
+        plt.savefig(self.label+'Model.'+self.fig_format,
+                    format=self.fig_format, bbox_inches='tight')
+
         plt.close(fig)
         # self.dist = np.max(self.dist) - self.dist
         # self.distance = np.max(self.distance) - self.distance
@@ -1039,9 +1045,12 @@ class RadarLine(object):
             plt.gca().invert_xaxis()
         if self.settick == 'manual':
             plotmodel.set_xticks(np.arange(self.min_tick, self.max_tick+1., self.delta_tick))
-        pp = PdfPages(self.label+'AgeMisfit.pdf')
-        pp.savefig(fig, bbox_inches='tight')
-        pp.close()
+        # pp = PdfPages(self.label+'AgeMisfit.pdf')
+        # pp.savefig(fig, bbox_inches='tight')
+        # pp.close()
+        plt.savefig(self.label+'AgeMisfit.'+self.fig_format,
+                    format=self.fig_format, bbox_inches='tight')
+
         plt.close(fig)
 
         # model confidence intervals
@@ -1095,9 +1104,12 @@ class RadarLine(object):
             plt.gca().invert_xaxis()
         if self.settick == 'manual':
             plotmodelci.set_xticks(np.arange(self.min_tick, self.max_tick+1., self.delta_tick))
-        pp = PdfPages(self.label+'Model-confidence-interval.pdf')
-        pp.savefig(fig, bbox_inches='tight')
-        pp.close()
+        # pp = PdfPages(self.label+'Model-confidence-interval.pdf')
+        # pp.savefig(fig, bbox_inches='tight')
+        # pp.close()
+        plt.savefig(self.label+'Model-confidence-interval.'+self.fig_format,
+                    format=self.fig_format, bbox_inches='tight')
+
         plt.close(fig)
 
         # thinning
@@ -1134,9 +1146,12 @@ class RadarLine(object):
         plt.axis((min(self.distance), max(self.distance), self.max_depth, 0))
         if self.reverse_distance:
             plt.gca().invert_xaxis()
-        pp = PdfPages(self.label+'Thinning.pdf')
-        pp.savefig(plt.figure('Thinning'), bbox_inches = 'tight')
-        pp.close()
+        # pp = PdfPages(self.label+'Thinning.pdf')
+        # pp.savefig(plt.figure('Thinning'), bbox_inches = 'tight')
+        # pp.close()
+        plt.savefig(self.label+'Thinning.'+self.fig_format,
+                    format=self.fig_format, bbox_inches='tight')
+
         plt.close(fig)
 
         # accumulation history
@@ -1157,9 +1172,12 @@ class RadarLine(object):
         if self.reverse_distance:
             plt.gca().invert_xaxis()
 
-        pp = PdfPages(self.label+'AccumulationHistory.pdf')
-        pp.savefig(fig)
-        pp.close()
+        #pp = PdfPages(self.label+'AccumulationHistory.pdf')
+        #pp.savefig(fig)
+        #pp.close()
+        plt.savefig(self.label+'AccumulationHistory.'+self.fig_format,
+                    format=self.fig_format, bbox_inches='tight')
+
         plt.close(fig)
         print('model displayed')
         
@@ -1181,7 +1199,6 @@ class RadarLine(object):
                 obs_file = self.ic[name].get('obs')
             
                 if obs_file is not None:
-                    
                     df= pd.read_csv(obs_file, sep=None, comment='#', engine='python')
                     z_obs= df['depth'].to_numpy(dtype=float)
                     age_obs = df['age'].to_numpy(dtype=float)
@@ -1200,13 +1217,11 @@ class RadarLine(object):
                 plt.ylabel('Depth (m)')
                 plt.legend(loc='upper right')
                 plt.grid(True, linestyle=':', alpha=0.6)
-                plt.axis((0,1500,bedrock_depth+100,0))
-            
-                pdf_name = f"{self.label}AgeDepth_{name}.pdf"
-                with PdfPages(pdf_name) as pp:
-                    pp.savefig(fig)
+                x1, x2, y1, y2 = plt.axis()
+                plt.axis((0, x2, max(depth_model.max(), bedrock_depth)+100, 0))
+                plt.savefig(f"{self.label}AgeDepth_{name}."+self.fig_format,
+                            format=self.fig_format, bbox_inches='tight')
                 plt.close(fig)
-            
                 header_text = (f"# Total ice thickness (m): {bedrock_depth}\n"
                                f"# Age at bedrock (yr): {age_model[-1]}\n"
                                f"# Ice core location (km): {self.ic[name]['x']}\n")
@@ -1218,6 +1233,53 @@ class RadarLine(object):
                            delimiter="\t",
                            header=header_text + "depth(m)\tage(yrs)\tsigma_age\tthinning",
                            comments="")
+        # ----------------------------------------------------------
+        # Graphs vs depth for the ice core
+        # ----------------------------------------------------------
+                 
+        for name in self.ic:
+            if not (self.distance.min() <= self.ic[name]['x'] <= self.distance.max()):
+                continue
+            idx_core = np.argmin(np.abs(self.distance - self.ic[name]['x']))
+ 
+            depth = self.depth[:, idx_core]
+            age   = self.age[:,   idx_core]
+            tau   = self.tau[:,   idx_core]
+            
+            fig, ax = plt.subplots(figsize=(7, 7))
+            ax.set_ylabel('depth (m)')
+            
+            iso_depth_at_ic = np.array([np.interp(self.ic[name]['x'], self.distance, self.iso[i]) for i in range(self.nbiso)])
+            iso_age_at_ic   = self.iso_obs_age[:,   0] / 1000.   # yr → kyr
+            iso_sigma_at_ic = self.iso_obs_sigma[:, 0] / 1000.   # yr → kyr
+ 
+            ax.invert_yaxis()
+            ax.plot(age / 1000., depth, color='b')
+            obs_file = self.ic[name].get('obs')
+        
+            if obs_file is not None:
+                df= pd.read_csv(obs_file, sep=None, comment='#', engine='python')
+                z_obs= df['depth'].to_numpy(dtype=float)
+                age_obs = df['age'].to_numpy(dtype=float)
+                ax.plot(age_obs/1000., z_obs, color='b', linestyle='dashed')
+        
+            
+            ax.set_xlabel('age (kyr)', color='b')
+            ax.spines['bottom'].set_color('b')
+            ax.tick_params(axis='x', colors='b')
+            ax.errorbar(iso_age_at_ic, iso_depth_at_ic, xerr=iso_sigma_at_ic,
+                         fmt='.', label='depth isos', color='black')
+ 
+            ax1 = ax.twiny()
+            ax1.spines.bottom.set_visible(False)
+            ax1.plot(tau, depth, color='g')
+            ax1.set_xlabel('thinning function (no unit)', color='g')
+            ax1.spines['top'].set_color('g')
+            ax1.tick_params(axis='x', colors='g')
+ 
+            plt.savefig(self.label + name + '_ice_core_vs_depth.' + self.fig_format,
+                        format=self.fig_format, bbox_inches='tight')
+            plt.close(fig)
         
     # model parameter graphs
     def parameters_display(self):
@@ -1226,37 +1288,37 @@ class RadarLine(object):
         plt.plot(self.distance, self.a*100, label='accumulation', color='k')
         plt.ylabel('accu. (cm/yr)', fontsize=10)
         plt.xlabel('distance (km)')
-        plt.savefig(self.label+'accumulation.pdf')
+        plt.savefig(self.label+'accumulation.'+self.fig_format)
 
         plt.figure()
         plt.plot(self.distance, self.p, label='p', color='k')
         plt.ylabel('p parameter', fontsize=10)
         plt.xlabel('distance (km)')
-        plt.savefig(self.label+'p.pdf')
+        plt.savefig(self.label+'p.'+self.fig_format)
 
         plt.figure()
         plt.plot(self.distance, self.p_prime, label='p_prime', color='k')
         plt.ylabel('p\' parameter', fontsize=10)
         plt.xlabel('distance (km)')
-        plt.savefig(self.label+'p_prime.pdf')
+        plt.savefig(self.label+'p_prime.'+self.fig_format)
         
         plt.figure()
         plt.plot(self.distance, self.Delta, label='Delta', color='k') 
         plt.ylabel('Delta parameter', fontsize=10)
         plt.xlabel('distance (km)')
-        plt.savefig(self.label+'Delta.pdf')
+        plt.savefig(self.label+'Delta.'+self.fig_format)
 
         plt.figure()
         plt.plot(self.distance, self.m, label='melting', color='k')
         plt.ylabel('melting', fontsize=10)
         plt.xlabel('distance (km)')
-        plt.savefig(self.label+'m.pdf')
+        plt.savefig(self.label+'m.'+self.fig_format)
 
         plt.figure()
         plt.plot(self.distance, self.resi_sd, label='residual sd', color='k')
         plt.ylabel('residual standard deviation', fontsize=10)
         plt.xlabel('distance (km)')
-        plt.savefig(self.label+'resi_sd.pdf')
+        plt.savefig(self.label+'resi_sd.'+self.fig_format)
 
     # age profile at specified site
     def drill(self, name, distance_drill):
@@ -1276,12 +1338,15 @@ class RadarLine(object):
         #a_drill = np.interp(distance_drill,self.distance, self.a)
         #accu_drill = a_drill*R_drill
         
-        R_drill = np.interp(age_drill, self.age_R, self.R)
+        f= self.interp1d_lin_aver(self.age_R, self.R, right=1., left=self.R[0])
+        R_drill = f(age_drill)
+        #R_drill = np.interp(age_drill, self.age_R, self.R)
+        real_age_density_drill = age_density_drill/R_drill
         a_drill = np.interp(distance_drill, self.distance, self.a)
         accu_drill = a_drill * R_drill
         
         
-        #accu_drill = np.concatenate((accu_drill,np.array([np.nan])))
+        accu_drill = np.concatenate((accu_drill,np.array([np.nan])))
         bed_drill = np.interp(distance_drill, self.distance, self.thkreal)
         stag_drill = np.interp(distance_drill, self.distance, self.stagnant)
         stigmastag_drill = np.interp(distance_drill, self.distance, self.sigma_thk)
@@ -1314,9 +1379,12 @@ class RadarLine(object):
         ax2.set_ylabel('thinning', color='orange')
         ax1.set_xlabel('Age (kyr)')
         ax1.legend(loc=1)
-        pp = PdfPages(self.label+'Age_'+ name + '.pdf')
-        pp.savefig(age_plot)
-        pp.close()
+        # pp = PdfPages(self.label+'Age_'+ name + '.pdf')
+        # pp.savefig(age_plot)
+        # pp.close()
+        plt.savefig(f"{self.label}Age_{name}."+self.fig_format,
+                    format=self.fig_format, bbox_inches='tight')
+
         # vertical velocity profile
         accu_now = accu_drill[0]
         vv_plot, ax1 = plt.subplots()
@@ -1328,9 +1396,12 @@ class RadarLine(object):
         ax1.set_ylabel('depth (m)')
         ax1.invert_yaxis()
         plt.savefig(self.label+'vertical_v_'+name+'.pdf')
+        plt.savefig(f"{self.label}Vertical_v_{name}."+self.fig_format,
+                    format=self.fig_format, bbox_inches='tight')
+
 
         # header for saving data
-        output = np.vstack((depth_drill[:-1], age_drill[:-1], sigmaage_drill[:-1],age_density_drill, accu_drill[:-1], omega_drill[:-1],vv[:-1]))
+        output = np.vstack((depth_drill[:-1], age_drill[:-1], sigmaage_drill[:-1],real_age_density_drill, accu_drill[:-1], omega_drill[:-1],vv[:-1]))
         header = '# Total ice thickness is (m): ' + str(bed_drill) +'+-' + str(stigmastag_drill) +'\n'
         if stag_drill > 0:
             header += '# Maximum age (yrs): ' +  str(age_drill_bot) + '+-' + str(sigmaage_drill_bot) + '\n'
