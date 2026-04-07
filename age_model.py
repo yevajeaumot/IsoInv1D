@@ -1280,6 +1280,35 @@ class RadarLine(object):
             plt.savefig(self.label + name + '_ice_core_vs_depth.' + self.fig_format,
                         format=self.fig_format, bbox_inches='tight')
             plt.close(fig)
+            
+            # ---------------------------------------------------------------------
+            # inverted parameters
+            # ---------------------------------------------------------------------
+            if self.invert_thk:
+                fig, ax = plt.subplots(4, figsize=(7,10))
+                ax[0].plot(self.distance, self.a, color='C0')
+                ax[1].plot(self.distance, self.p, color='C1')
+                ax[2].plot(self.distance, self.Delta, color='C2')
+                ax[3].plot(self.distance, self.m, color='C3')
+                ax3b = ax[3].twinx()
+                ax3b.plot(self.distance, self.stagnant, color='grey')
+                
+                ax[0].fill_between(self.distance, self.a+self.sigma_a, self.a-self.sigma_a, color='C0', alpha=0.3, edgecolor=None)
+                ax[1].fill_between(self.distance, self.p+self.sigma_p, self.p-self.sigma_p, color='C1', alpha=0.3, edgecolor=None)
+                ax[2].fill_between(self.distance, self.Delta+self.sigma_Delta, self.Delta-self.sigma_Delta, color='C2', alpha=0.3, edgecolor=None)
+                ax[3].fill_between(self.distance, self.m+self.sigma_m, self.m-self.sigma_m, color='C3', alpha=0.3, edgecolor=None)
+            
+                ax[0].set_ylabel('a (m/yr)', color='C0')
+                ax[1].set_ylabel('p', color='C1')
+                ax[2].set_ylabel('Delta', color='C2')
+                ax[3].set_ylabel('m (m/yr)', color='C3')
+                ax[3].set_xlabel('Distance (km)')
+                ax3b.set_ylabel('stagnant ice thickness (m)', color='grey')
+
+                plt.setp(ax, xlim=(np.min(self.distance), np.max(self.distance)))
+                plt.savefig(self.label+'inverted_params.'+self.fig_format,
+                            format=self.fig_format, bbox_inches='tight')
+
         
     # model parameter graphs
     def parameters_display(self):
