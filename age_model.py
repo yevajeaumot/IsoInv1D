@@ -140,13 +140,39 @@ class RadarLine(object):
                 print(f" {len(self.layer_name)} loaded columns (from {self.layer_name[0]} to {self.layer_name[-1]})")
             else:
                 self.iso_raw = np.array([])
-            self.nbiso = len(self.layer_name)    
+            self.nbiso = len(self.layer_name)  
+            
         if self.is_basal:
             self.basal_raw = df['A_basal_unit'].to_numpy(dtype=float)
         if self.is_bedelev: 
             self.bedelev = df['bedelev'].to_numpy(dtype=float)
         if self.is_trace: 
             self.trace = df['trace'].to_numpy(dtype=float)
+
+        # Fill nan gaps smaller than max_gap in raw isochrone data
+        for i in range (self.nbiso) :
+            iso_i = self.iso_raw[i, :].copy()
+            nan_mask = np.isnan(iso_i)
+            if not nan_mask.any():
+                continue
+            starts  = np.where(np.diff(nan_mask.astype(int)) ==  1)[0] + 1   # first NaN index
+            ends    = np.where(np.diff(nan_mask.astype(int)) == -1)[0]        # last NaN index (inclusive)
+            # handle edge cases where array starts/ends with NaN
+            if nan_mask[0]:
+                starts = np.concatenate(([0], starts))
+            if nan_mask[-1]:
+                ends = np.concatenate((ends, [len(iso_i) - 1]))
+            for s, e in zip(starts, ends):
+                left_idx  = s - 1
+                right_idx = e + 1
+                if left_idx < 0 or right_idx >= len(self.distance_raw):
+                    continue   
+                gap = self.distance_raw[right_idx] - self.distance_raw[left_idx]
+                if gap <= self.max_gap:
+                # linear interpolation over the gap
+                    iso_i[s:e+1] = np.interp(self.distance_raw[s:e+1], [self.distance_raw[left_idx], self.distance_raw[right_idx]],
+                                             [iso_i[left_idx], iso_i[right_idx]])
+            self.iso_raw[i, :] = iso_i
 
         # set start and end points where there are at least 2 non nan isochrones
         non_nans = np.array([np.count_nonzero(~np.isnan((self.iso_raw[:,i]).flatten())) for i in range(len(self.distance_raw))])
